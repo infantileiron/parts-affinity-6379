@@ -4,10 +4,14 @@ import redis
 from src.config.database import Session
 from src.models.entities import MiningRun,AssociationRule
 from src.services.analysis import mine
+from src.services import withdrawal_processing as wp
 r=redis.Redis.from_url(os.environ['REDIS_URL'])
 with Session() as recovery:
+ # 宕机恢复：中断的挖掘任务重新入队；中断的撤回纠正退回待处理并重跑（幂等，不重复扣减）
  for pending in recovery.query(MiningRun).filter(MiningRun.state.in_(['queued','running'])).all():pending.state='queued';r.rpush('affinity:runs',pending.id)
  recovery.commit()
+ try:wp.recover(recovery)
+ except Exception:logging.exception('withdrawal recovery on startup')
 while True:
  Path('/tmp/heartbeat').touch()
  try:
@@ -20,7 +24,7 @@ while True:
    try:
     result=mine(snapshot,row.min_support,row.min_confidence,row.min_lift)
     s.query(AssociationRule).filter_by(run_id=row.id).delete()
-    for rule in result['rules']:s.add(AssociationRule(run_id=row.id,**rule))
+    for rule in result['rules']:s.add(AssociationRule(run_id=row.id,status='active',**rule))
     row.result={**result,'snapshot':snapshot};row.state='done'
     Path('/artifacts/'+str(row.id)+'.json').write_text(json.dumps(row.result,ensure_ascii=False))
    except Exception as e:row.state='failed';row.error=str(e)

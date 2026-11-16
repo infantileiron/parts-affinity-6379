@@ -28,3 +28,8 @@ class KitEdit(BaseModel):
  note:str=Field(min_length=8,max_length=2000)
 class RuleOutput(BaseModel):
  id:int;run_id:int;antecedent:list[str];consequent:list[str];support:float;confidence:float;lift:float;count:int
+class WithdrawalInput(BaseModel):
+ code:str=Field(min_length=1,max_length=60)
+ reason:str=Field(default='',max_length=1000)
+class WithdrawalApprove(BaseModel):
+ note:str=Field(default='',max_length=1000)
